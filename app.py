@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from groq import Groq
+from urllib.parse import urlparse # ডোমেইন নাম বের করার জন্য
 import re
 
 # 1. Secrets Management
@@ -20,27 +21,37 @@ st.set_page_config(page_title="Dibakar AI", layout="centered")
 
 st.markdown("""
     <style>
-    /* মেইন ব্যাকগ্রাউন্ড ফিক্স */
+    /* ১. নিচের সাদা অংশটি গাঢ় ব্লু করার জন্য মেইন ব্যাকগ্রাউন্ড ফিক্স */
     .stApp {
-        background-color: #070B16;
+        background-color: #070B16 !important;
         color: #E2E8F0;
     }
     
-    /* নিচের সাদা বারটি মুছে ফেলার জন্য */
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    [data-testid="stBottom"] {
+    /* নিচের সাদা অংশটিকে ফিক্স করা (মোস্ট ইম্পর্টেন্ট) */
+    div[data-testid="stBottom"] {
+        background-color: transparent !important;
+        bottom: 0px !important;
+        z-index: 1000 !important;
+    }
+    div[data-testid="stBottom"] > div {
         background-color: transparent !important;
     }
+    
+    /* চ্যাট ইনপুট ডার্ক এবং ব্লু গ্লো */
     [data-testid="stChatInput"] {
         background-color: #121827 !important;
-        border: 1px solid #2D3748 !important;
+        border: 2px solid #2D3748 !important;
         border-radius: 15px !important;
+        transition: 0.3s;
+    }
+    [data-testid="stChatInput"]:focus-within {
+        border-color: #60A5FA !important;
+        box-shadow: 0 0 15px rgba(96, 165, 250, 0.3) !important;
     }
 
     /* টাইটেল */
     .main-title {
-        font-size: 3rem;
+        font-size: 3.5rem;
         font-weight: 800;
         text-align: center;
         margin-bottom: 2rem;
@@ -49,7 +60,7 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
     }
 
-    /* ইউজার মেসেজ বাবল */
+    /* ইউজার মেসেজ বাবল (Hinglish/Bengali-English Style) */
     .user-msg {
         background-color: #1E293B;
         padding: 15px;
@@ -70,17 +81,35 @@ st.markdown("""
         line-height: 1.7;
     }
 
-    /* সোর্স কার্ড */
+    /* সোর্স কার্ড উইথ লোগো (Modern Style) */
+    .source-container {
+        display: flex;
+        flex-wrap: wrap;
+        margin-top: 10px;
+    }
     .source-tag {
-        display: inline-block;
+        display: flex;
+        align-items: center;
         background: #1F2937;
-        padding: 4px 10px;
+        padding: 5px 10px;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 13px;
         color: #60A5FA;
-        margin-right: 5px;
+        margin-right: 10px;
+        margin-bottom: 10px;
         border: 1px solid #374151;
         text-decoration: none;
+        transition: 0.2s;
+    }
+    .source-tag:hover {
+        background: #2D3748;
+        border-color: #60A5FA;
+    }
+    .source-tag img {
+        width: 16px;
+        height: 16px;
+        margin-right: 8px;
+        border-radius: 3px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -99,28 +128,52 @@ def clean_scrape(url):
         return " ".join(soup.get_text().split())[:1500]
     except: return ""
 
+def get_domain_logo(url):
+    # ডোমেইন নাম এবং লোগো ফাইলে লিঙ্ক বের করার জন্য
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+    # Google's S2 converter is used to get the favicon of any website
+    logo_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
+    return logo_url, domain
+
 def get_ai_response(user_input):
-    # সার্চ লজিক
-    search_res = requests.post("https://google.serper.dev/search", 
-                               headers={'X-API-KEY': SERPER_API_KEY}, 
-                               json={"q": user_input, "num": 3}).json()
+    # ---Greeting Logic ---
+    greetings = ["hi", "hii", "hello", "kaise ho", "kemon acho"]
+    user_lower = user_input.lower().strip()
+    is_greeting = user_lower in greetings or len(user_lower.split()) < 3
+    
     context = ""
     links = []
-    for item in search_res.get('organic', []):
-        links.append(item['link'])
-        context += f"\nSource: {item['link']}\nContent: {clean_scrape(item['link'])}\n"
 
-    system_msg = "You are Dibakar AI. Use provided context to answer. Be direct and use the user's language."
+    if not is_greeting:
+        search_res = requests.post("https://google.serper.dev/search", 
+                                   headers={'X-API-KEY': SERPER_API_KEY}, 
+                                   json={"q": user_input, "num": 3}).json()
+        
+        for item in search_res.get('organic', []):
+            links.append(item['link'])
+            context += f"\nSource: {item['link']}\nContent: {clean_scrape(item['link'])}\n"
+
+    # --- Strict System Prompt ---
+    system_instruction = f"""
+    You are Dibakar AI, a smart research engine. Respond ONLY in the user's language.
+    STRICT RULES:
+    1. GREETINGS: If user says 'Hi' or 'Hii' or 'Hlo', DO NOT talk about Huntington Ingalls Industries. Just say: "Hii! Main theek hoon, aap kaise ho?" or "Hii! আমি ভালো আছি, তুমি কেমন আছো?"
+    2. LANGUAGE MATCH: If user asks in Hinglish, answer in Hinglish. If in Bengali, answer in Bengali.
+    3. REPETITION: Do not repeat numbers like '0 · 0 · 0' or technical errors in context.
+    4. ACCURACY: Combine internal knowledge with web context. Prioritize accuracy.
+    """
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[{"role": "system", "content": system_msg},
-                  {"role": "user", "content": f"Context: {context}\nQuestion: {user_input}"}],
-        temperature=0.3
+        messages=[{"role": "system", "content": system_instruction},
+                  {"role": "user", "content": f"Web Context: {context}\n\nQuestion: {user_input}"}],
+        temperature=0.1 # কমিয়ে দেওয়া হয়েছে ভুল এড়াতে (Lowest creativity)
     )
+    
     return response.choices[0].message.content, links
 
-# --- UI Display ---
+# --- Dibakar AI UI ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
 # চ্যাট হিস্ট্রি দেখানো
@@ -130,12 +183,14 @@ for chat in st.session_state.messages:
     else:
         st.markdown(f'<div class="ai-msg">{chat["content"]}</div>', unsafe_allow_html=True)
         if "links" in chat:
-            cols = st.columns(len(chat["links"]))
+            st.markdown('<div class="source-container">', unsafe_allow_html=True)
             for i, link in enumerate(chat["links"]):
-                st.markdown(f'<a href="{link}" class="source-tag">Source [{i+1}]</a>', unsafe_allow_html=True)
+                logo_url, domain = get_domain_logo(link)
+                st.markdown(f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}"> Source [{i+1}] - {domain}</a>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-# ইনপুট বক্স (চ্যাট স্টাইল)
-if prompt := st.chat_input("Ask about anything..."):
+# চ্যাট ইনপুট বক্স
+if prompt := st.chat_input("Ask me anything about IPL 2026, Players, News..."):
     # ইউজার মেসেজ সেভ করা
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
