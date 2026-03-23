@@ -16,7 +16,7 @@ except KeyError:
 client = Groq(api_key=GROQ_API_KEY)
 MODEL_NAME = "llama-3.1-8b-instant"
 
-# --- UI Setup & Ultra Premium CSS ---
+# --- UI Setup & Premium UI Fix ---
 st.set_page_config(page_title="Dibakar AI", layout="centered")
 
 st.markdown("""
@@ -27,7 +27,7 @@ st.markdown("""
         color: #E2E8F0;
     }
     
-    /* নিচের সাদা বারটি মুছে ফেলে পার্পল/ডার্ক ব্লু করার ম্যাজিক */
+    /* নিচের সাদা বারটি পার্পল/ডার্ক ব্লু করা */
     [data-testid="stBottom"] {
         background: linear-gradient(to top, #1E1B4B, #070B16) !important;
         border-top: 1px solid #4C1D95 !important;
@@ -45,22 +45,26 @@ st.markdown("""
         background: linear-gradient(to right, #60A5FA, #A78BFA);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.3));
     }
 
-    /* চ্যাট ইনপুট বক্স - পার্পল গ্লো (Purple Glow) */
+    /* চ্যাট ইনপুট বক্স ফিক্স - লেখা কালো এবং বোল্ড করা */
     [data-testid="stChatInput"] {
-        background-color: #121827 !important;
-        border: 2px solid #6366F1 !important; /* Indigo/Purple Border */
+        background-color: #F1F5F9 !important; /* হালকা সাদা/গ্রে ব্যাকগ্রাউন্ড */
+        border: 2px solid #6366F1 !important;
         border-radius: 15px !important;
-        box-shadow: 0 0 15px rgba(99, 102, 241, 0.2) !important;
     }
     
-    /* ইনপুট টেক্সট বোল্ড */
+    /* ইনপুট টেক্সট এবং প্লেসহোল্ডার কালার ব্ল্যাক ও বোল্ড */
     [data-testid="stChatInput"] textarea {
-        font-weight: 700 !important;
-        color: #FFFFFF !important;
+        color: #000000 !important; /* লেখা একদম কালো */
+        font-weight: 800 !important; /* একদম বোল্ড */
         font-size: 16px !important;
+    }
+    
+    /* প্লেসহোল্ডার (Ask me anything) টেক্সট কালার ফিক্স */
+    [data-testid="stChatInput"] textarea::placeholder {
+        color: #475569 !important; /* প্লেসহোল্ডার একটু ডার্ক গ্রে */
+        font-weight: 700 !important;
     }
 
     /* মেসেজ বাবল ডিজাইন */
@@ -79,7 +83,7 @@ st.markdown("""
         padding: 20px;
         border-radius: 15px 15px 15px 0;
         margin-bottom: 25px;
-        border: 1px solid #4C1D95; /* Purple Border */
+        border: 1px solid #4C1D95;
         line-height: 1.7;
     }
 
@@ -98,7 +102,6 @@ st.markdown("""
         text-decoration: none;
     }
     
-    /* মেকআপ: অপ্রয়োজনীয় এলিমেন্ট হাইড করা */
     header {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
@@ -134,7 +137,7 @@ def get_ai_response(user_input):
     You are Dibakar AI. 
     Always respond in the EXACT language used by the user. 
     If they say 'Hii' respond in English. If 'Kaise ho' respond in Hindi.
-    Your UI is purple-themed and premium. Keep answers smart and direct.
+    Keep answers smart and direct.
     """
     
     response = client.chat.completions.create(
@@ -148,23 +151,19 @@ def get_ai_response(user_input):
 # --- Dibakar AI UI ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
-# চ্যাট হিস্ট্রি রেন্ডার
 for chat in st.session_state.messages:
     if chat["role"] == "user":
         st.markdown(f'<div class="user-msg">{chat["content"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="ai-msg">{chat["content"]}</div>', unsafe_allow_html=True)
         if "links" in chat and chat["links"]:
-            cols = st.container()
-            with cols:
-                html_links = '<div style="display: flex; flex-wrap: wrap;">'
-                for i, link in enumerate(chat["links"]):
-                    logo_url, domain = get_domain_logo(link)
-                    html_links += f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}" style="width:16px; margin-right:8px;"> {domain}</a>'
-                html_links += '</div>'
-                st.markdown(html_links, unsafe_allow_html=True)
+            html_links = '<div style="display: flex; flex-wrap: wrap;">'
+            for i, link in enumerate(chat["links"]):
+                logo_url, domain = get_domain_logo(link)
+                html_links += f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}" style="width:16px; margin-right:8px;"> {domain}</a>'
+            html_links += '</div>'
+            st.markdown(html_links, unsafe_allow_html=True)
 
-# ইনপুট বক্স
 if prompt := st.chat_input("Ask me anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.spinner("Analyzing..."):
