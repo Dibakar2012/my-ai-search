@@ -17,20 +17,20 @@ MODEL_NAME = "llama-3.1-8b-instant"
 def clean_scrape(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=8)
         if res.status_code != 200: return ""
         soup = BeautifulSoup(res.content, 'html.parser')
-        for tag in soup(['nav', 'footer', 'script', 'style', 'header', 'aside']): tag.decompose()
-        return " ".join(soup.get_text().split())[:3000]
+        for tag in soup(['nav', 'footer', 'script', 'style', 'header', 'aside', 'ads']): tag.decompose()
+        return " ".join(soup.get_text().split())[:2000]
     except: return ""
 
 def get_ai_response(user_input):
-    # --- Greeting Logic ---
-    greetings = ["hi", "hii", "hello", "hey", "kaise ho", "kemon acho", "namaste", "হেই", "হ্যালো"]
+    # --- Greeting & Language Logic ---
+    greetings = ["hi", "hii", "hello", "hey", "kaise ho", "kemon acho", "namaste", "কেমন আছো", "কেমন আছ"]
     user_lower = user_input.lower().strip()
     
-    # ছোট মেসেজ বা গ্রিটিং হলে সার্চ বন্ধ রাখবে
-    is_greeting = user_lower in greetings or len(user_lower) < 4
+    # Check if search is really needed
+    is_greeting = any(greet in user_lower for greet in greetings) and len(user_lower.split()) < 5
     
     context = ""
     links = []
@@ -38,7 +38,7 @@ def get_ai_response(user_input):
     if not is_greeting:
         search_res = requests.post("https://google.serper.dev/search", 
                                    headers={'X-API-KEY': SERPER_API_KEY}, 
-                                   json={"q": user_input, "num": 5}).json()
+                                   json={"q": user_input, "num": 3}).json()
         
         for item in search_res.get('organic', []):
             link = item['link']
@@ -47,24 +47,27 @@ def get_ai_response(user_input):
                 links.append(link)
                 context += f"\nSource: {link}\nContent: {content}\n"
 
-    # --- System Prompt (The Personality) ---
+    # --- Strict System Prompt ---
     system_instruction = f"""
     You are Dibakar's Infinite Vision Engine.
-    1. STRICT RULE: Respond in the SAME LANGUAGE style as the user. 
-    2. If user says 'Hi' or 'Hii', respond like: "Hii! Main thik hoon, aap kaise ho?" or "Hii! আমি ভালো আছি, তুমি কেমন আছো?" 
-    3. DO NOT give long definitions of greetings. Be short and friendly for casual chat.
-    4. For factual questions (like IPL, players, news), combine web data with your smart knowledge.
-    5. Never say "Access Denied". If a site is blocked, just use your own brain to answer.
-    6. Use a mix of local language and English terms to look professional.
+    STRICT RULES:
+    1. LANGUAGE: Respond ONLY in the language used by the user. 
+       - If User says "Kaise ho" (Hindi), answer ONLY in Hindi (e.g., "Main theek hoon").
+       - If User says "Kemon acho" (Bengali), answer ONLY in Bengali (e.g., "Ami bhalo achi").
+       - If User says "Hi" (English), answer in English.
+    2. NO REPETITION: Do not repeat time stamps like '10m 34s' or any gibberish data.
+    3. GREETINGS: If it's a greeting, DO NOT use web search results about songs or companies. Just answer like a human friend.
+    4. KNOWLEDGE: For real questions, mix web data with your own brain. Never mention technical errors like 'Access Denied'.
+    5. PERSONALITY: Be smart, direct, and professional. Use English technical terms only where necessary.
     """
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
             {"role": "system", "content": system_instruction},
-            {"role": "user", "content": f"Web Context: {context}\n\nUser Question: {user_input}"}
+            {"role": "user", "content": f"Web Context: {context}\n\nUser Input: {user_input}"}
         ],
-        temperature=0.8 # একটু ক্রিয়েটিভ উত্তরের জন্য
+        temperature=0.3 # কমিয়ে দেওয়া হয়েছে যাতে ভুলভাল কথা না বলে (Less creative, more accurate)
     )
     
     return response.choices[0].message.content, links
@@ -73,12 +76,12 @@ def get_ai_response(user_input):
 st.set_page_config(page_title="Dibakar AI Engine", layout="wide")
 
 st.title("🚀 Dibakar's Infinite Vision Engine")
-st.write("Smart Hybrid Search | Real-time Data | Friendly Chat")
+st.write("Smart Language Detection | Real-time Search | Hybrid AI")
 
-query = st.text_input("এখানে টাইপ করো (Ask me anything):")
+query = st.text_input("এখানে লিখুন (Type here):")
 
 if query:
-    with st.spinner('Wait standard processing...'):
+    with st.spinner('Processing...'):
         answer, sources = get_ai_response(query)
         st.subheader("🤖 Response")
         st.write(answer)
