@@ -15,170 +15,134 @@ except KeyError:
 client = Groq(api_key=GROQ_API_KEY)
 MODEL_NAME = "llama-3.1-8b-instant"
 
-# --- UI Layout & Advanced Premium CSS ---
+# --- UI Setup & Premium CSS ---
 st.set_page_config(page_title="Dibakar AI", layout="centered")
 
 st.markdown("""
     <style>
-    /* মেইন ব্যাকগ্রাউন্ড (Darker, Premium Deep Navy) */
+    /* মেইন ব্যাকগ্রাউন্ড ফিক্স */
     .stApp {
-        background-color: #070B16; 
+        background-color: #070B16;
         color: #E2E8F0;
     }
     
-    /* টাইটেল ডিজাইন (Premium Gradient & Glow) */
+    /* নিচের সাদা বারটি মুছে ফেলার জন্য */
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stBottom"] {
+        background-color: transparent !important;
+    }
+    [data-testid="stChatInput"] {
+        background-color: #121827 !important;
+        border: 1px solid #2D3748 !important;
+        border-radius: 15px !important;
+    }
+
+    /* টাইটেল */
     .main-title {
-        font-size: 3.5rem;
+        font-size: 3rem;
         font-weight: 800;
         text-align: center;
-        margin-top: -30px;
-        margin-bottom: 2.5rem;
+        margin-bottom: 2rem;
         background: linear-gradient(to right, #60A5FA, #A78BFA);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 15px rgba(96, 165, 250, 0.4);
-        font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
-    /* নতুন চ্যাট ইনপুট ফিক্স - এটিকে টেক্সট বক্সের ভেতর আনা */
-    .stChatInput {
-        background-color: #121827 !important;
-        border-radius: 20px !important;
-        padding: 10px !important;
-        border: 2px solid #2D3748 !important;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
-        transition: 0.3s;
+    /* ইউজার মেসেজ বাবল */
+    .user-msg {
+        background-color: #1E293B;
+        padding: 15px;
+        border-radius: 15px 15px 0 15px;
         margin-bottom: 20px;
-    }
-    .stChatInput:focus-within {
-        border-color: #60A5FA !important;
-        box-shadow: 0 0 20px rgba(96, 165, 250, 0.2) !important;
-    }
-    /* ইনপুট ফিল্ডের কালার */
-    .stChatInput > div > div > textarea {
-        color: white !important;
-        font-size: 16px !important;
-    }
-    /* সেন্ট আইকনের কালার ফিক্স */
-    .stChatInput button {
-        color: #60A5FA !important;
+        border: 1px solid #334155;
+        max-width: 80%;
+        margin-left: auto;
     }
 
-    /* রেসপন্স কন্টেইনার (Modern Perplexity Style) */
-    .response-container {
-        background-color: #121827;
-        border-radius: 15px;
-        padding: 25px;
-        margin-top: 30px;
-        border: 1px solid #2D3748;
-        line-height: 1.8;
-        font-family: 'SF Pro Display', sans-serif;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    /* এআই মেসেজ বাবল */
+    .ai-msg {
+        background-color: #111827;
+        padding: 20px;
+        border-radius: 15px 15px 15px 0;
+        margin-bottom: 25px;
+        border: 1px solid #1F2937;
+        line-height: 1.7;
     }
 
-    /* সোর্স হেডার */
-    .source-header {
-        color: #94A3B8;
-        margin-top: 25px;
-        font-weight: 600;
-        font-size: 1.1rem;
-    }
     /* সোর্স কার্ড */
-    .source-card {
-        background-color: #1A2132;
-        border-radius: 10px;
-        padding: 12px;
-        margin-bottom: 10px;
-        border: 1px solid #2D3748;
-        font-size: 14px;
-        transition: 0.2s ease-in-out;
+    .source-tag {
+        display: inline-block;
+        background: #1F2937;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #60A5FA;
+        margin-right: 5px;
+        border: 1px solid #374151;
+        text-decoration: none;
     }
-    .source-card:hover {
-        border-color: #60A5FA;
-        background-color: #2D3748;
-        transform: translateY(-2px);
-    }
-    
-    /* Hide Streamlit Header/Footer */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- Logic Functions (Fixed Garbage Logic) ---
+# --- Session State for Chat History ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# --- Logic Functions ---
 def clean_scrape(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code != 200: return ""
         soup = BeautifulSoup(res.content, 'html.parser')
-        for tag in soup(['nav', 'footer', 'script', 'style', 'header', 'aside', 'ads', 'form', 'button', 'ul', 'ol']): tag.decompose()
-        text = " ".join(soup.get_text().split())
-        return text[:1500]
+        for tag in soup(['nav', 'footer', 'script', 'style', 'header', 'aside']): tag.decompose()
+        return " ".join(soup.get_text().split())[:1500]
     except: return ""
 
-def remove_garbage_patterns(text):
-    cleaned = re.sub(r'(\d+[ms]\s+\d+[ms]\s*·*)+', '', text) 
-    cleaned = re.sub(r'(\s*·*\s*0\s*·*)+', '', cleaned)
-    return cleaned.strip()
-
 def get_ai_response(user_input):
-    greetings = ["hi", "hii", "hello", "kaise ho", "kemon acho"]
-    user_lower = user_input.lower().strip()
-    is_greeting = user_lower in greetings or len(user_lower.split()) < 3
-    
+    # সার্চ লজিক
+    search_res = requests.post("https://google.serper.dev/search", 
+                               headers={'X-API-KEY': SERPER_API_KEY}, 
+                               json={"q": user_input, "num": 3}).json()
     context = ""
     links = []
+    for item in search_res.get('organic', []):
+        links.append(item['link'])
+        context += f"\nSource: {item['link']}\nContent: {clean_scrape(item['link'])}\n"
 
-    if not is_greeting:
-        search_res = requests.post("https://google.serper.dev/search", 
-                                   headers={'X-API-KEY': SERPER_API_KEY}, 
-                                   json={"q": user_input, "num": 3}).json()
-        
-        for item in search_res.get('organic', []):
-            link = item['link']
-            item_snippet = remove_garbage_patterns(item.get('snippet', ''))
-            content = clean_scrape(link)
-            cleaned_content = remove_garbage_patterns(content)
-            
-            if len(cleaned_content) > 100 and "access denied" not in cleaned_content.lower():
-                links.append(link)
-                context += f"\nSource: {link}\nSearch Snippet: {item_snippet}\nWebsite Content: {cleaned_content}\n"
-
-    system_instruction = f"""
-    You are Dibakar AI, a professional research engine. Match the user's language style.
-    Combine internal knowledge with the provided context. Prioritize accuracy over length.
-    Never mention access denied or gibberish repetitions in response.
-    """
+    system_msg = "You are Dibakar AI. Use provided context to answer. Be direct and use the user's language."
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": f"Web Context: {context}\n\nQuestion: {user_input}"}
-        ],
+        messages=[{"role": "system", "content": system_msg},
+                  {"role": "user", "content": f"Context: {context}\nQuestion: {user_input}"}],
         temperature=0.3
     )
-    
     return response.choices[0].message.content, links
 
-# --- Dibakar AI UI ---
+# --- UI Display ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
-# সেন্টারে ইনপুট বক্স আনার জন্য (Columns removed, centered layout used)
-# এটিই সবথেকে বড় পরিবর্তন
-query = st.chat_input("Ask about anything... (IPL, News, etc.)")
+# চ্যাট হিস্ট্রি দেখানো
+for chat in st.session_state.messages:
+    if chat["role"] == "user":
+        st.markdown(f'<div class="user-msg">{chat["content"]}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="ai-msg">{chat["content"]}</div>', unsafe_allow_html=True)
+        if "links" in chat:
+            cols = st.columns(len(chat["links"]))
+            for i, link in enumerate(chat["links"]):
+                st.markdown(f'<a href="{link}" class="source-tag">Source [{i+1}]</a>', unsafe_allow_html=True)
 
-if query:
-    with st.spinner('Accessing infinite knowledge...'):
-        answer, sources = get_ai_response(query)
-        
-        # রেসপন্স বক্স
-        st.markdown(f'<div class="response-container">{answer}</div>', unsafe_allow_html=True)
-        
-        # সোর্স কার্ড
-        if sources:
-            st.markdown('<div class="source-header">🌐 Verified Sources</div>', unsafe_allow_html=True)
-            for url in sources:
-                st.markdown(f'<div class="source-card">🔗 <a href="{url}" target="_blank" style="color:#60A5FA; text-decoration:none;">{url}</a></div>', unsafe_allow_html=True)
+# ইনপুট বক্স (চ্যাট স্টাইল)
+if prompt := st.chat_input("Ask about anything..."):
+    # ইউজার মেসেজ সেভ করা
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(f'<div class="user-msg">{prompt}</div>', unsafe_allow_html=True)
+
+    # এআই রেসপন্স
+    with st.spinner("Analyzing..."):
+        answer, sources = get_ai_response(prompt)
+        st.session_state.messages.append({"role": "assistant", "content": answer, "links": sources})
+        st.rerun() # স্ক্রিন রিফ্রেশ করে মেসেজগুলো সাজানোর জন্য
