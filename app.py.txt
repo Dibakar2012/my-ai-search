@@ -1,0 +1,71 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+from groq import Groq
+
+# Streamlit Secrets থেকে API Key লোড করা (নিরাপদ পদ্ধতি)
+try:
+    SERPER_KEY = st.secrets["SERPER_API_KEY"]
+    GROQ_KEY = st.secrets["GROQ_API_KEY"]
+except KeyError:
+    st.error("API Keys missing! Please add them in Streamlit Secrets.")
+    st.stop()
+
+client = Groq(api_key=GROQ_KEY)
+
+def clean_scrape(url):
+    """বিজ্ঞাপন ও অপ্রাসঙ্গিক টেক্সট বাদ দিয়ে মূল কন্টেন্ট নেওয়া"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.content, 'html.parser')
+        # অপ্রয়োজনীয় ট্যাগ মুছে ফেলা
+        for tag in soup(['nav', 'footer', 'script', 'style', 'header', 'aside']):
+            tag.decompose()
+        # পরিষ্কার টেক্সট বের করা
+        text = " ".join(soup.get_text().split())
+        return text[:3000] # প্রথম ৩০০০ ক্যারেক্টার
+    except:
+        return ""
+
+# --- UI ডিজাইন ---
+st.set_page_config(page_title="Dibakar Search Engine", page_icon="🔍")
+st.title("🌐 Dibakar's AI Search Engine")
+st.caption("Powered by Llama 3.1 & Serper.dev")
+
+query = st.text_input("যেকোনো প্রশ্ন লিখুন (Ask anything):")
+
+if query:
+    with st.spinner('গুগল থেকে তথ্য খোঁজা হচ্ছে...'):
+        # ১. Serper.dev দিয়ে গুগল সার্চ
+        search_url = "https://google.serper.dev/search"
+        search_res = requests.post(search_url, 
+                                   headers={'X-API-KEY': SERPER_KEY}, 
+                                   json={"q": query, "num": 3}).json()
+        
+        context = ""
+        links = []
+        for item in search_res.get('organic', []):
+            link = item['link']
+            links.append(link)
+            content = clean_scrape(link)
+            context += f"\nSource: {link}\nContent: {content}\n"
+
+        # ২. Groq (Llama 3.1) দিয়ে উত্তর তৈরি
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research assistant. Respond in the same language as the user. Cite sources as [1], [2] based on context."},
+                {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"}
+            ],
+            temperature=0.5
+        )
+        
+        # ফলাফল দেখানো
+        st.markdown("### উত্তর (Answer):")
+        st.write(response.choices[0].message.content)
+        
+        # সাইডবারে সোর্স লিঙ্ক
+        st.sidebar.markdown("### সূত্রসমূহ (Sources):")
+        for i, l in enumerate(links, 1):
+            st.sidebar.markdown(f"**[{i}]** [{l}]({l})")
