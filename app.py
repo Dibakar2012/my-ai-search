@@ -16,7 +16,7 @@ except KeyError:
 client = Groq(api_key=GROQ_API_KEY)
 MODEL_NAME = "llama-3.1-8b-instant"
 
-# --- UI Setup & Premium CSS ---
+# --- UI Setup & Ultra Premium CSS ---
 st.set_page_config(page_title="Dibakar AI", layout="centered")
 
 st.markdown("""
@@ -27,8 +27,12 @@ st.markdown("""
         color: #E2E8F0;
     }
     
-    /* নিচের সাদা অংশ ফিক্স */
-    div[data-testid="stBottom"] {
+    /* নিচের সাদা বারটি মুছে ফেলে পার্পল/ডার্ক ব্লু করার ম্যাজিক */
+    [data-testid="stBottom"] {
+        background: linear-gradient(to top, #1E1B4B, #070B16) !important;
+        border-top: 1px solid #4C1D95 !important;
+    }
+    [data-testid="stBottom"] > div {
         background-color: transparent !important;
     }
 
@@ -41,23 +45,25 @@ st.markdown("""
         background: linear-gradient(to right, #60A5FA, #A78BFA);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.3));
     }
 
-    /* টেক্সট বক্স ডিজাইন (বোল্ড টেক্সট সহ) */
+    /* চ্যাট ইনপুট বক্স - পার্পল গ্লো (Purple Glow) */
     [data-testid="stChatInput"] {
         background-color: #121827 !important;
-        border: 2px solid #3B82F6 !important; /* Blue border */
+        border: 2px solid #6366F1 !important; /* Indigo/Purple Border */
         border-radius: 15px !important;
+        box-shadow: 0 0 15px rgba(99, 102, 241, 0.2) !important;
     }
     
-    /* ইনপুট টেক্সট বোল্ড করা */
+    /* ইনপুট টেক্সট বোল্ড */
     [data-testid="stChatInput"] textarea {
-        font-weight: 700 !important; /* Bold Text */
+        font-weight: 700 !important;
         color: #FFFFFF !important;
-        font-size: 17px !important;
+        font-size: 16px !important;
     }
 
-    /* ইউজার মেসেজ বাবল */
+    /* মেসেজ বাবল ডিজাইন */
     .user-msg {
         background-color: #1E293B;
         padding: 15px;
@@ -66,56 +72,47 @@ st.markdown("""
         border: 1px solid #334155;
         max-width: 85%;
         margin-left: auto;
-        font-weight: 500;
     }
 
-    /* এআই মেসেজ বাবল */
     .ai-msg {
         background-color: #111827;
         padding: 20px;
         border-radius: 15px 15px 15px 0;
         margin-bottom: 25px;
-        border: 1px solid #1F2937;
+        border: 1px solid #4C1D95; /* Purple Border */
         line-height: 1.7;
     }
 
-    /* সোর্স কার্ড */
-    .source-container {
-        display: flex;
-        flex-wrap: wrap;
-        margin-top: 10px;
-    }
+    /* সোর্স ট্যাগ */
     .source-tag {
         display: flex;
         align-items: center;
-        background: #1F2937;
+        background: #1E1B4B;
         padding: 6px 12px;
         border-radius: 8px;
         font-size: 13px;
-        color: #60A5FA;
+        color: #A78BFA;
         margin-right: 10px;
         margin-bottom: 10px;
-        border: 1px solid #374151;
+        border: 1px solid #4C1D95;
         text-decoration: none;
     }
-    .source-tag img {
-        width: 16px;
-        height: 16px;
-        margin-right: 8px;
-    }
+    
+    /* মেকআপ: অপ্রয়োজনীয় এলিমেন্ট হাইড করা */
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- Logic Functions ---
+# --- লজিক ফাংশন ---
 def get_domain_logo(url):
     domain = urlparse(url).netloc
     return f"https://www.google.com/s2/favicons?domain={domain}&sz=32", domain
 
 def get_ai_response(user_input):
-    # Greeting detection
     greetings = ["hi", "hii", "hello", "kaise ho", "kemon acho", "hlo"]
     user_lower = user_input.lower().strip()
     is_greeting = user_lower in greetings or len(user_lower.split()) < 3
@@ -133,14 +130,11 @@ def get_ai_response(user_input):
                 context += f"Source: {item['link']}\nSnippet: {item.get('snippet','')}\n"
         except: pass
 
-    # Strict language system prompt
     system_instruction = """
     You are Dibakar AI. 
-    CRITICAL RULE: Always respond in the EXACT language used by the user.
-    - User says 'Hii' or 'Hello' -> Respond in English (e.g., 'Hii! I am fine. How can I help you?').
-    - User says 'Kaise ho' -> Respond in Hindi (e.g., 'Main theek hoon, aap kaise hain?').
-    - User says 'Kemon acho' -> Respond in Bengali (e.g., 'Ami bhalo achi, tumi kemon acho?').
-    DO NOT explain word meanings. DO NOT mention defense companies for greetings.
+    Always respond in the EXACT language used by the user. 
+    If they say 'Hii' respond in English. If 'Kaise ho' respond in Hindi.
+    Your UI is purple-themed and premium. Keep answers smart and direct.
     """
     
     response = client.chat.completions.create(
@@ -154,21 +148,26 @@ def get_ai_response(user_input):
 # --- Dibakar AI UI ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
+# চ্যাট হিস্ট্রি রেন্ডার
 for chat in st.session_state.messages:
     if chat["role"] == "user":
         st.markdown(f'<div class="user-msg">{chat["content"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="ai-msg">{chat["content"]}</div>', unsafe_allow_html=True)
         if "links" in chat and chat["links"]:
-            st.markdown('<div class="source-container">', unsafe_allow_html=True)
-            for i, link in enumerate(chat["links"]):
-                logo_url, domain = get_domain_logo(link)
-                st.markdown(f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}"> {domain}</a>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            cols = st.container()
+            with cols:
+                html_links = '<div style="display: flex; flex-wrap: wrap;">'
+                for i, link in enumerate(chat["links"]):
+                    logo_url, domain = get_domain_logo(link)
+                    html_links += f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}" style="width:16px; margin-right:8px;"> {domain}</a>'
+                html_links += '</div>'
+                st.markdown(html_links, unsafe_allow_html=True)
 
+# ইনপুট বক্স
 if prompt := st.chat_input("Ask me anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.spinner("Processing..."):
+    with st.spinner("Analyzing..."):
         answer, sources = get_ai_response(prompt)
         st.session_state.messages.append({"role": "assistant", "content": answer, "links": sources})
     st.rerun()
