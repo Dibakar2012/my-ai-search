@@ -5,13 +5,13 @@ import datetime
 import time
 
 # --- ১. Firebase Initialization ---
+# নিশ্চিত করো 'serviceAccountKey.json' ফাইলটি একই ফোল্ডারে আছে
 if not firebase_admin._apps:
     try:
-        # নিশ্চিত করো 'serviceAccountKey.json' ফাইলটি তোমার ফোল্ডারে আছে
         cred = credentials.Certificate("serviceAccountKey.json") 
         firebase_admin.initialize_app(cred)
     except Exception as e:
-        st.error(f"Firebase Key Error: {e}")
+        st.error("Firebase চাবি (JSON ফাইল) খুঁজে পাওয়া যায়নি। দয়া করে ফাইলটি ফোল্ডারে রাখুন।")
 
 db = firestore.client()
 
@@ -22,69 +22,77 @@ def get_user_data(email):
     if doc.exists:
         return doc.to_dict()
     else:
-        # নতুন ইউজারদের জন্য ১০ ফ্রি ক্রেডিট সেট করা হচ্ছে
-        data = {"credits": 10, "signup_date": str(datetime.date.today())}
+        # নতুন ইউজারদের জন্য ১০ ফ্রি ক্রেডিট এবং আজকের তারিখ সেভ করা
+        data = {
+            "credits": 10, 
+            "signup_date": str(datetime.date.today()),
+            "status": "Free"
+        }
         doc_ref.set(data)
         return data
 
 def update_db_credits(email, amount):
     db.collection("users").document(email.lower()).update({"credits": amount})
 
-# --- ৩. UI & Styling ---
+# --- ৩. UI Styling (Premium Dark Theme) ---
 st.set_page_config(page_title="Dibakar AI", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #070B16; color: white; }
-    .main-title { font-size: 3.5rem; font-weight: 800; text-align: center; background: linear-gradient(to right, #60A5FA, #A78BFA); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }
-    .plan-box { background: #111827; padding: 25px; border-radius: 15px; border: 1px solid #1E293B; text-align: center; margin-bottom: 20px; }
-    .premium-box { background: linear-gradient(135deg, #1E1B4B, #4C1D95); border: 2px solid #A78BFA; }
-    .call-btn { width: 100%; background: #25D366; color: white; padding: 18px; border-radius: 12px; text-align: center; font-size: 20px; font-weight: bold; text-decoration: none; display: block; margin-top: 10px; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4); }
+    .main-title { font-size: 3.5rem; font-weight: 800; text-align: center; background: linear-gradient(to right, #60A5FA, #A78BFA); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
+    .plan-box { background: #111827; padding: 25px; border-radius: 15px; border: 1px solid #1E293B; text-align: center; height: 100%; transition: 0.3s; }
+    .premium-box { background: linear-gradient(135deg, #1E1B4B, #4C1D95); border: 2px solid #A78BFA; box-shadow: 0 10px 30px rgba(167, 139, 250, 0.2); }
+    .call-btn { width: 100%; background: #25D366; color: white; padding: 18px; border-radius: 12px; text-align: center; font-size: 20px; font-weight: bold; text-decoration: none; display: block; margin-top: 20px; box-shadow: 0 5px 15px rgba(37, 211, 102, 0.4); }
+    .call-btn:hover { background: #1eb954; transform: scale(1.02); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৪. Session & Login ---
+# --- ৪. Login / Session Management ---
 if "user_email" not in st.session_state:
     st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
-    st.subheader("Login to start searching")
-    email_input = st.text_input("আপনার ইমেইল আইডি দিন")
-    if st.button("লগইন / সাইনআপ"):
-        if email_input:
-            st.session_state.user_email = email_input.lower()
-            st.rerun()
+    st.write("<p style='text-align: center;'>India's Most Powerful AI Search Engine</p>", unsafe_allow_html=True)
+    
+    with st.container():
+        email_input = st.text_input("Enter your email to start", placeholder="example@gmail.com")
+        if st.button("Login / Create Account", use_container_width=True):
+            if email_input:
+                st.session_state.user_email = email_input.lower()
+                st.rerun()
     st.stop()
 
-# Load User Data from Firebase
+# Load Data
 user_data = get_user_data(st.session_state.user_email)
 current_credits = user_data['credits']
+# তোমার স্পেশাল ইমেল চেক
 is_admin = st.session_state.user_email == "dibakar61601@gmail.com"
 
-# --- ৫. Sidebar (Profile & Admin) ---
+# --- ৫. Sidebar (Admin & History) ---
 with st.sidebar:
-    st.title("Dibakar AI Dashboard")
-    st.write(f"📧 ইউজার: {st.session_state.user_email}")
-    st.write(f"⭐ ক্রেডিট: {current_credits if not is_admin else 'Unlimited 💎'}")
+    st.title("Settings")
+    st.write(f"Logged in: **{st.session_state.user_email}**")
+    st.write(f"Credits: **{current_credits if not is_admin else 'Unlimited 💎'}**")
     
     if is_admin:
         st.markdown("---")
-        if st.checkbox("👑 Admin Dashboard (ম্যানুয়াল অ্যাপ্রুভাল)"):
-            target = st.text_input("ক্রেডিট দিতে ইউজারের ইমেইল লিখুন")
-            if st.button("Approve ₹35 (75 Credits)"):
-                update_db_credits(target, 75)
-                st.success(f"75 Credits added to {target}")
-            if st.button("Approve ₹99 (300 Credits)"):
-                update_db_credits(target, 300)
-                st.success(f"300 Credits added to {target}")
-    
-    if st.button("লগআউট"):
+        st.subheader("👑 Admin Panel")
+        target_mail = st.text_input("User Email")
+        if st.button("Approve ₹35 (75 Credits)"):
+            update_db_credits(target_mail, 75)
+            st.success("75 Credits Added!")
+        if st.button("Approve ₹99 (300 Credits)"):
+            update_db_credits(target_mail, 300)
+            st.success("300 Credits Added!")
+            
+    if st.button("Logout"):
         del st.session_state.user_email
         st.rerun()
 
-# --- ৬. Main App Logic ---
+# --- ৬. Main Content ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
-# ক্রেডিট চেক
+# ক্রেডিট শেষ হলে রিচার্জ অপশন
 if current_credits <= 0 and not is_admin:
-    st.error("আপনার ফ্রি ক্রেডিট শেষ হয়ে গেছে! সার্চ চালিয়ে যেতে রিচার্জ করুন।")
+    st.error("আপনার ফ্রি ক্রেডিট শেষ হয়ে গেছে! সার্চ চালিয়ে যেতে প্ল্যান বেছে নিন।")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -92,9 +100,10 @@ if current_credits <= 0 and not is_admin:
             <div class="plan-box">
                 <h3 style="color:#94A3B8;">Standard Plan</h3>
                 <h1>₹99</h1>
-                <p>✅ ৩০০টি এআই রিকোয়েস্ট</p>
-                <p>✅ হাই স্পিড সার্ভার অ্যাক্সেস</p>
-                <p>✅ কোনো ডেইলি লিমিট নেই</p>
+                <p>✅ 300 AI Search Requests</p>
+                <p>✅ Super Fast Response</p>
+                <p>✅ No Daily Limit</p>
+                <p>✅ Access All Features</p>
             </div>
         """, unsafe_allow_html=True)
         
@@ -103,27 +112,29 @@ if current_credits <= 0 and not is_admin:
             <div class="plan-box premium-box">
                 <h3 style="color:#A78BFA;">Special Offer 🚀</h3>
                 <h1>₹35</h1>
-                <p>✅ ৭৫টি এআই রিকোয়েস্ট</p>
-                <p>✅ ফুল প্রিমিয়াম ফিচার</p>
-                <p>✅ স্টুডেন্টদের জন্য সেরা অফার</p>
+                <p>✅ 75 AI Search Requests</p>
+                <p>✅ Student Friendly Price</p>
+                <p>✅ All Pro Models Included</p>
+                <p>✅ Priority Support</p>
             </div>
         """, unsafe_allow_html=True)
-    
-    # তোমার দেওয়া ফোন নাম্বারে কল বাটন
+
+    # কল বাটন
     st.markdown('<a href="tel:+919242959903" class="call-btn">📞 পেমেন্ট করে আমাকে কল করুন (Approval)</a>', unsafe_allow_html=True)
-    st.info("পেমেন্ট করার পর উপরের বাটনে ক্লিক করে আমাকে (দিবাকর) কল করুন।")
+    st.info("নোট: পেমেন্ট করার পর উপরের বাটনে ক্লিক করে সরাসরি আমার সাথে কথা বলুন।")
 
 else:
     # সার্চ বার
-    query = st.chat_input("এআই কে কিছু জিজ্ঞেস করুন (যেমন: আজকের খবর কী?)...")
+    query = st.chat_input("Ask Dibakar AI anything...")
     if query:
         st.chat_message("user").write(query)
-        with st.spinner("AI ভাবছে..."):
-            # এখানে তোমার আসল সার্চ এপিআই (Groq/Serper) কল হবে
+        with st.spinner("AI is thinking..."):
+            # এখানে তোমার আসল AI API বসবে
             time.sleep(2) 
-            st.chat_message("assistant").write(f"আমি আপনার প্রশ্নের উত্তর তৈরি করছি... (এখানে উত্তর দেখা যাবে)")
+            st.chat_message("assistant").write(f"Here is the answer for: {query}")
             
-            # ক্রেডিট কমানো (অ্যাডমিন বাদে)
+            # ক্রেডিট আপডেট (অ্যাডমিন বাদে)
             if not is_admin:
-                update_db_credits(st.session_state.user_email, current_credits - 1)
+                new_val = current_credits - 1
+                update_db_credits(st.session_state.user_email, new_val)
                 st.rerun()
