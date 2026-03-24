@@ -1,142 +1,172 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
-import datetime
-import re
-import textwrap
+import requests
+from bs4 import BeautifulSoup
 from groq import Groq
+from urllib.parse import urlparse
+import re
 
-# --- ১. Page Setup ---
-st.set_page_config(page_title="Dibakar AI", layout="wide")
+# 1. Secrets Management
+try:
+    SERPER_API_KEY = st.secrets["SERPER_API_KEY"]
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except KeyError:
+    st.error("API Keys missing! Please add them in Streamlit Secrets.")
+    st.stop()
 
-# --- ২. Bulletproof Firebase Initialization (Indestructible Method) ---
-@st.cache_resource
-def init_db():
-    if not firebase_admin._apps:
-        try:
-            fb_dict = dict(st.secrets["firebase"])
-            
-            # জাদু: চাবির ভেতর থেকে সব ভুল স্পেস, \n এবং ফালতু লেখা ছেঁকে বাদ দেওয়া হচ্ছে
-            raw_key = fb_dict.get("private_key", "")
-            
-            # শুধুমাত্র আসল চাবির অক্ষরগুলো ফিল্টার করা হচ্ছে
-            b64_string = "".join(re.findall(r'[A-Za-z0-9+/=]+', raw_key))
-            b64_string = b64_string.replace("BEGINPRIVATEKEY", "").replace("ENDPRIVATEKEY", "")
-            
-            # চাবিটাকে ঠিক ৬৪ ক্যারেক্টার পর পর নিখুঁতভাবে ভাঙা হচ্ছে
-            valid_pem_body = "\n".join(textwrap.wrap(b64_string, 64))
-            
-            # ফায়ারবেসের জন্য একদম পারফেক্ট চাবি তৈরি
-            perfect_private_key = f"-----BEGIN PRIVATE KEY-----\n{valid_pem_body}\n-----END PRIVATE KEY-----\n"
-            
-            # ডিকশনারিতে পারফেক্ট চাবিটা বসানো হলো
-            fb_dict["private_key"] = perfect_private_key
-            
-            cred = credentials.Certificate(fb_dict)
-            firebase_admin.initialize_app(cred)
-            
-        except Exception as e:
-            st.error(f"Firebase Config Error: {e}")
-            st.stop()
-            
-    return firestore.client()
+client = Groq(api_key=GROQ_API_KEY)
+MODEL_NAME = "llama-3.1-8b-instant"
 
-db = init_db()
+# --- UI Setup & Premium UI Fix ---
+st.set_page_config(page_title="Dibakar AI", layout="centered")
 
-# --- ৩. Database Functions ---
-def get_user(email):
-    doc_ref = db.collection("users").document(email)
-    doc = doc_ref.get()
-    if doc.exists:
-        return doc.to_dict()
-    else:
-        data = {"credits": 10, "signup_date": str(datetime.date.today())}
-        doc_ref.set(data)
-        return data
-
-def update_credits(email, amount):
-    db.collection("users").document(email).update({"credits": amount})
-
-# --- ৪. UI & CSS ---
 st.markdown("""
     <style>
-    .stApp { background-color: #050810; color: white; }
-    .main-title { font-size: 3.5rem; font-weight: 800; text-align: center; background: linear-gradient(45deg, #3B82F6, #8B5CF6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 10px; }
-    .plan-card { background: #111827; padding: 25px; border-radius: 15px; border: 1px solid #374151; text-align: center; }
-    .premium-card { border: 2px solid #8B5CF6; background: linear-gradient(135deg, #0F172A, #1E1B4B); }
-    .call-btn { background: #22C55E; color: white; padding: 15px; border-radius: 10px; text-decoration: none; display: block; font-weight: bold; text-align: center; font-size: 18px; margin-top: 15px; }
+    /* মেইন ব্যাকগ্রাউন্ড */
+    .stApp {
+        background-color: #070B16 !important;
+        color: #E2E8F0;
+    }
+    
+    /* নিচের সাদা বারটি পার্পল/ডার্ক ব্লু করা */
+    [data-testid="stBottom"] {
+        background: linear-gradient(to top, #1E1B4B, #070B16) !important;
+        border-top: 1px solid #4C1D95 !important;
+    }
+    [data-testid="stBottom"] > div {
+        background-color: transparent !important;
+    }
+
+    /* টাইটেল */
+    .main-title {
+        font-size: 3.5rem;
+        font-weight: 800;
+        text-align: center;
+        margin-bottom: 2rem;
+        background: linear-gradient(to right, #60A5FA, #A78BFA);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    /* চ্যাট ইনপুট বক্স ফিক্স - লেখা কালো এবং বোল্ড করা */
+    [data-testid="stChatInput"] {
+        background-color: #F1F5F9 !important; /* হালকা সাদা/গ্রে ব্যাকগ্রাউন্ড */
+        border: 2px solid #6366F1 !important;
+        border-radius: 15px !important;
+    }
+    
+    /* ইনপুট টেক্সট এবং প্লেসহোল্ডার কালার ব্ল্যাক ও বোল্ড */
+    [data-testid="stChatInput"] textarea {
+        color: #000000 !important; /* লেখা একদম কালো */
+        font-weight: 800 !important; /* একদম বোল্ড */
+        font-size: 16px !important;
+    }
+    
+    /* প্লেসহোল্ডার (Ask me anything) টেক্সট কালার ফিক্স */
+    [data-testid="stChatInput"] textarea::placeholder {
+        color: #475569 !important; /* প্লেসহোল্ডার একটু ডার্ক গ্রে */
+        font-weight: 700 !important;
+    }
+
+    /* মেসেজ বাবল ডিজাইন */
+    .user-msg {
+        background-color: #1E293B;
+        padding: 15px;
+        border-radius: 15px 15px 0 15px;
+        margin-bottom: 20px;
+        border: 1px solid #334155;
+        max-width: 85%;
+        margin-left: auto;
+    }
+
+    .ai-msg {
+        background-color: #111827;
+        padding: 20px;
+        border-radius: 15px 15px 15px 0;
+        margin-bottom: 25px;
+        border: 1px solid #4C1D95;
+        line-height: 1.7;
+    }
+
+    /* সোর্স ট্যাগ */
+    .source-tag {
+        display: flex;
+        align-items: center;
+        background: #1E1B4B;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #A78BFA;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #4C1D95;
+        text-decoration: none;
+    }
+    
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- ৫. Login System ---
-if "user_email" not in st.session_state:
-    st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
-    st.write("<p style='text-align: center;'>India's Ultimate AI Search Engine</p>", unsafe_allow_html=True)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# --- লজিক ফাংশন ---
+def get_domain_logo(url):
+    domain = urlparse(url).netloc
+    return f"https://www.google.com/s2/favicons?domain={domain}&sz=32", domain
+
+def get_ai_response(user_input):
+    greetings = ["hi", "hii", "hello", "kaise ho", "kemon acho", "hlo"]
+    user_lower = user_input.lower().strip()
+    is_greeting = user_lower in greetings or len(user_lower.split()) < 3
     
-    email_login = st.text_input("আপনার ইমেইল দিন:", placeholder="example@gmail.com")
-    if st.button("লগইন / সাইনআপ", use_container_width=True):
-        if email_login:
-            st.session_state.user_email = email_login.lower().strip()
-            st.rerun()
-    st.stop()
+    context = ""
+    links = []
 
-# Load Data
-email = st.session_state.user_email
-user_data = get_user(email)
-user_credits = user_data.get('credits', 0)
-is_admin = (email == "dibakar61601@gmail.com")
+    if not is_greeting:
+        try:
+            search_res = requests.post("https://google.serper.dev/search", 
+                                       headers={'X-API-KEY': SERPER_API_KEY}, 
+                                       json={"q": user_input, "num": 3}).json()
+            for item in search_res.get('organic', []):
+                links.append(item['link'])
+                context += f"Source: {item['link']}\nSnippet: {item.get('snippet','')}\n"
+        except: pass
 
-# --- ৬. Sidebar (Profile & Admin) ---
-with st.sidebar:
-    st.title("👤 প্রোফাইল")
-    st.write(f"ইমেইল: **{email}**")
-    st.write(f"ক্রেডিট বাকি: **{user_credits if not is_admin else 'Unlimited 💎'}**")
+    system_instruction = """
+    You are Dibakar AI. 
+    Always respond in the EXACT language used by the user. 
+    If they say 'Hii' respond in English. If 'Kaise ho' respond in Hindi.
+    Keep answers smart and direct.
+    """
     
-    if is_admin:
-        st.markdown("---")
-        st.subheader("👑 অ্যাডমিন প্যানেল")
-        target_email = st.text_input("ইউজার ইমেইল")
-        c_amount = st.number_input("ক্রেডিট দিন", min_value=0, value=75)
-        if st.button("পেমেন্ট কনফার্ম"):
-            update_credits(target_email.lower().strip(), c_amount)
-            st.success("ক্রেডিট পাঠানো হয়েছে!")
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[{"role": "system", "content": system_instruction},
+                  {"role": "user", "content": f"Context: {context}\nQuestion: {user_input}"}],
+        temperature=0.1
+    )
+    return response.choices[0].message.content, links
 
-    if st.button("লগআউট"):
-        del st.session_state.user_email
-        st.rerun()
-
-# --- ৭. Main Content (Search & AI) ---
+# --- Dibakar AI UI ---
 st.markdown('<div class="main-title">Dibakar AI</div>', unsafe_allow_html=True)
 
-if user_credits <= 0 and not is_admin:
-    st.error("আপনার ফ্রি সার্চ শেষ! প্লিজ রিচার্জ করুন।")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown('<div class="plan-card"><h3>Standard</h3><h1>₹99</h1><hr><p>✅ ৩০০ সার্চ</p></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown('<div class="plan-card premium-card"><h3>Offer 🚀</h3><h1>₹35</h1><hr><p>✅ ৭৫ সার্চ</p></div>', unsafe_allow_html=True)
-    
-    st.markdown('<a href="tel:+919242959903" class="call-btn">📞 পেমেন্ট করে কল করুন: 9242959903</a>', unsafe_allow_html=True)
+for chat in st.session_state.messages:
+    if chat["role"] == "user":
+        st.markdown(f'<div class="user-msg">{chat["content"]}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="ai-msg">{chat["content"]}</div>', unsafe_allow_html=True)
+        if "links" in chat and chat["links"]:
+            html_links = '<div style="display: flex; flex-wrap: wrap;">'
+            for i, link in enumerate(chat["links"]):
+                logo_url, domain = get_domain_logo(link)
+                html_links += f'<a href="{link}" target="_blank" class="source-tag"><img src="{logo_url}" style="width:16px; margin-right:8px;"> {domain}</a>'
+            html_links += '</div>'
+            st.markdown(html_links, unsafe_allow_html=True)
 
-else:
-    query = st.chat_input("যেকোনো কিছু জিজ্ঞেস করুন...")
-    if query:
-        st.chat_message("user").write(query)
-        
-        with st.spinner("Dibakar AI ভাবছে..."):
-            try:
-                # Groq API দিয়ে আসল AI উত্তর তৈরি
-                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-                response = client.chat.completions.create(
-                    messages=[{"role": "user", "content": query}],
-                    model="llama3-8b-8192", 
-                )
-                ai_answer = response.choices[0].message.content
-                st.chat_message("assistant").write(ai_answer)
-                
-                # ক্রেডিট কমানো
-                if not is_admin:
-                    update_credits(email, user_credits - 1)
-                    st.rerun()
-            except Exception as e:
-                st.error("এআই সার্ভারে সমস্যা হচ্ছে। একটু পর আবার চেষ্টা করুন।")
+if prompt := st.chat_input("Ask me anything..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.spinner("Analyzing..."):
+        answer, sources = get_ai_response(prompt)
+        st.session_state.messages.append({"role": "assistant", "content": answer, "links": sources})
+    st.rerun()
