@@ -2,45 +2,43 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import datetime
+import re
 import textwrap
 from groq import Groq
 
 # --- ১. Page Setup ---
 st.set_page_config(page_title="Dibakar AI", layout="wide")
 
-# --- ২. Bulletproof Firebase Initialization (The Ultimate Fix) ---
+# --- ২. Bulletproof Firebase Initialization (Indestructible Method) ---
 @st.cache_resource
 def init_db():
     if not firebase_admin._apps:
         try:
-            fb = st.secrets["firebase"]
+            fb_dict = dict(st.secrets["firebase"])
             
-            # কোনো \n বা স্পেস থাকলে সেটা মুছে একদম ফ্রেশ করা হচ্ছে
-            raw_key = fb["private_key_base64"].replace(" ", "").replace("\\n", "").replace("\n", "").strip()
+            # জাদু: চাবির ভেতর থেকে সব ভুল স্পেস, \n এবং ফালতু লেখা ছেঁকে বাদ দেওয়া হচ্ছে
+            raw_key = fb_dict.get("private_key", "")
             
-            # textwrap দিয়ে ঠিক ৬৪ ক্যারেক্টার পর পর লাইন ভাঙা হচ্ছে
-            formatted_key = "\n".join(textwrap.wrap(raw_key, 64))
+            # শুধুমাত্র আসল চাবির অক্ষরগুলো ফিল্টার করা হচ্ছে
+            b64_string = "".join(re.findall(r'[A-Za-z0-9+/=]+', raw_key))
+            b64_string = b64_string.replace("BEGINPRIVATEKEY", "").replace("ENDPRIVATEKEY", "")
             
-            # এখানে পারফেক্টভাবে BEGIN এবং END যোগ করা হচ্ছে (InvalidByte এরর আর আসবে না)
-            real_private_key = f"-----BEGIN PRIVATE KEY-----\n{formatted_key}\n-----END PRIVATE KEY-----\n"
+            # চাবিটাকে ঠিক ৬৪ ক্যারেক্টার পর পর নিখুঁতভাবে ভাঙা হচ্ছে
+            valid_pem_body = "\n".join(textwrap.wrap(b64_string, 64))
             
-            cred_dict = {
-                "type": "service_account",
-                "project_id": fb["project_id"],
-                "private_key_id": fb["private_key_id"],
-                "private_key": real_private_key,
-                "client_email": fb["client_email"],
-                "client_id": "116065322617292181420",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": fb["client_x509_cert_url"]
-            }
-            cred = credentials.Certificate(cred_dict)
+            # ফায়ারবেসের জন্য একদম পারফেক্ট চাবি তৈরি
+            perfect_private_key = f"-----BEGIN PRIVATE KEY-----\n{valid_pem_body}\n-----END PRIVATE KEY-----\n"
+            
+            # ডিকশনারিতে পারফেক্ট চাবিটা বসানো হলো
+            fb_dict["private_key"] = perfect_private_key
+            
+            cred = credentials.Certificate(fb_dict)
             firebase_admin.initialize_app(cred)
+            
         except Exception as e:
             st.error(f"Firebase Config Error: {e}")
             st.stop()
+            
     return firestore.client()
 
 db = init_db()
