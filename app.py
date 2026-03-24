@@ -1,6 +1,25 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
+import json
+
+# --- Firebase Initialization ---
+if not firebase_admin._apps:
+    try:
+        # এটি তোমার দেওয়া Secrets থেকে তথ্য পড়বে
+        if "firebase" in st.secrets:
+            firebase_dict = dict(st.secrets["firebase"])
+            cred = credentials.Certificate(firebase_dict)
+            firebase_admin.initialize_app(cred)
+        else:
+            st.error("Secrets-এ 'firebase' ডাটা পাওয়া যায়নি!")
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+db = firestore.client()
+import streamlit as st
+import firebase_admin
+from firebase_admin import credentials, firestore
 import datetime
 import time
 
