@@ -2,34 +2,20 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import datetime
+import json
 from groq import Groq
 
 # --- ১. Page Setup ---
 st.set_page_config(page_title="Dibakar AI", layout="wide")
 
-# --- ২. Bulletproof Firebase Initialization ---
-# st.cache_resource ব্যবহার করা হয়েছে যাতে বারবার রিলোড হয়ে ক্র্যাশ না করে
+# --- ২. Bulletproof Firebase Initialization (JSON Method) ---
 @st.cache_resource
 def init_db():
     if not firebase_admin._apps:
         try:
-            fb = st.secrets["firebase"]
-            # যে কোনো ভুল স্পেস বা ফরম্যাট নিজে থেকে ঠিক করে নেবে
-            pk = fb["private_key"].replace("\\n", "\n").strip()
-            
-            cred_dict = {
-                "type": fb["type"],
-                "project_id": fb["project_id"],
-                "private_key_id": fb["private_key_id"],
-                "private_key": pk,
-                "client_email": fb["client_email"],
-                "client_id": fb["client_id"],
-                "auth_uri": fb["auth_uri"],
-                "token_uri": fb["token_uri"],
-                "auth_provider_x509_cert_url": fb["auth_provider_x509_cert_url"],
-                "client_x509_cert_url": fb["client_x509_cert_url"]
-            }
-            cred = credentials.Certificate(cred_dict)
+            # এক লাইনের JSON স্ট্রিং থেকে সরাসরি ডাটা নেবে, কোনো এরর হবে না
+            fb_dict = json.loads(st.secrets["FIREBASE_JSON"])
+            cred = credentials.Certificate(fb_dict)
             firebase_admin.initialize_app(cred)
         except Exception as e:
             st.error(f"Firebase Config Error: {e}")
