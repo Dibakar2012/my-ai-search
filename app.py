@@ -2,21 +2,26 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import datetime
+import textwrap
 from groq import Groq
 
 # --- ১. Page Setup ---
 st.set_page_config(page_title="Dibakar AI", layout="wide")
 
-# --- ২. Bulletproof Firebase Initialization (The Magic Method) ---
+# --- ২. Bulletproof Firebase Initialization (The Ultimate Fix) ---
 @st.cache_resource
 def init_db():
     if not firebase_admin._apps:
         try:
             fb = st.secrets["firebase"]
             
-            # জাদু: এক লাইনের কোডকে ভেঙে আসল চাবি তৈরি করা হচ্ছে
-            raw_key = fb["private_key_base64"]
-            formatted_key = "\n".join([raw_key[i:i+64] for i in range(0, len(raw_key), 64)])
+            # কোনো \n বা স্পেস থাকলে সেটা মুছে একদম ফ্রেশ করা হচ্ছে
+            raw_key = fb["private_key_base64"].replace(" ", "").replace("\\n", "").replace("\n", "").strip()
+            
+            # textwrap দিয়ে ঠিক ৬৪ ক্যারেক্টার পর পর লাইন ভাঙা হচ্ছে
+            formatted_key = "\n".join(textwrap.wrap(raw_key, 64))
+            
+            # এখানে পারফেক্টভাবে BEGIN এবং END যোগ করা হচ্ছে (InvalidByte এরর আর আসবে না)
             real_private_key = f"-----BEGIN PRIVATE KEY-----\n{formatted_key}\n-----END PRIVATE KEY-----\n"
             
             cred_dict = {
@@ -25,7 +30,7 @@ def init_db():
                 "private_key_id": fb["private_key_id"],
                 "private_key": real_private_key,
                 "client_email": fb["client_email"],
-                "client_id": fb["client_id"],
+                "client_id": "116065322617292181420",
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
